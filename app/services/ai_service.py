@@ -1,4 +1,5 @@
 import json
+import os
 import anthropic
 
 SYSTEM_PROMPT_ARTICLE = """Te egy profi magyar SEO szovegiro vagy.
@@ -34,12 +35,22 @@ def _extract_text_from_response(resp) -> str:
     return "".join(parts).strip()
 
 
-async def generate_article(topic: str, target_site: str | None = None) -> dict:
-    import os
+def _get_anthropic_api_key() -> str:
+    # Accept a few common env names to make cloud deployments less fragile.
+    candidates = [
+        os.environ.get("ANTHROPIC_API_KEY", ""),
+        os.environ.get("CLAUDE_API_KEY", ""),
+        os.environ.get("ANTHROPIC_KEY", ""),
+    ]
+    for raw in candidates:
+        key = raw.strip().strip('"').strip("'")
+        if key:
+            return key
+    raise RuntimeError("ANTHROPIC_API_KEY is not set")
 
-    client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
-    if not client.api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+async def generate_article(topic: str, target_site: str | None = None) -> dict:
+    client = anthropic.AsyncAnthropic(api_key=_get_anthropic_api_key())
     user_prompt = f"Tema: {topic}\nCeloldal: {target_site or 'n/a'}"
     resp = await client.messages.create(
         model="claude-3-5-sonnet-latest",
@@ -53,11 +64,7 @@ async def generate_article(topic: str, target_site: str | None = None) -> dict:
 
 
 async def generate_keywords(seed_keyword: str, industry: str | None = None) -> list[dict]:
-    import os
-
-    client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
-    if not client.api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+    client = anthropic.AsyncAnthropic(api_key=_get_anthropic_api_key())
     user_prompt = f"Magkulcsszo: {seed_keyword}\nIparag: {industry or 'altalanos'}"
     resp = await client.messages.create(
         model="claude-3-5-haiku-latest",
