@@ -1,9 +1,5 @@
 import json
-from anthropic import AsyncAnthropic
-from app.core.config import get_settings
-
-
-settings = get_settings()
+import anthropic
 
 SYSTEM_PROMPT_ARTICLE = """Te egy profi magyar SEO szovegiro vagy.
 Irj kb. 1200 szavas magyar cikket, strukturalt HTML tartalommal.
@@ -39,7 +35,11 @@ def _extract_text_from_response(resp) -> str:
 
 
 async def generate_article(topic: str, target_site: str | None = None) -> dict:
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    import os
+
+    client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    if not client.api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
     user_prompt = f"Tema: {topic}\nCeloldal: {target_site or 'n/a'}"
     resp = await client.messages.create(
         model="claude-3-5-sonnet-latest",
@@ -53,7 +53,11 @@ async def generate_article(topic: str, target_site: str | None = None) -> dict:
 
 
 async def generate_keywords(seed_keyword: str, industry: str | None = None) -> list[dict]:
-    client = AsyncAnthropic(api_key=settings.anthropic_api_key)
+    import os
+
+    client = anthropic.AsyncAnthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+    if not client.api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
     user_prompt = f"Magkulcsszo: {seed_keyword}\nIparag: {industry or 'altalanos'}"
     resp = await client.messages.create(
         model="claude-3-5-haiku-latest",
