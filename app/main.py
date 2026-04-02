@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import account, articles, auth, keywords, webhooks
 from app.core.config import get_settings
 from app.core.database import Base, engine
+from app.services.ai_service import anthropic_key_debug_info
 
 
 settings = get_settings()
@@ -41,6 +42,12 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+@app.get("/debug/env")
+async def debug_env():
+    """Temporary: verify Anthropic env without exposing secrets. Remove after fixing deploy."""
+    return anthropic_key_debug_info()
 
 
 @app.get("/v1/ping")

@@ -35,14 +35,22 @@ def _extract_text_from_response(resp) -> str:
     return "".join(parts).strip()
 
 
+ANTHROPIC_ENV_NAMES = ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_KEY")
+
+
+def anthropic_key_debug_info() -> dict:
+    """For GET /debug/env — no secret values."""
+    for name in ANTHROPIC_ENV_NAMES:
+        raw = os.environ.get(name, "")
+        key = raw.strip().strip('"').strip("'")
+        if key:
+            return {"anthropic_api_key_present": True, "env_name_found": name}
+    return {"anthropic_api_key_present": False, "env_name_found": None}
+
+
 def _get_anthropic_api_key() -> str:
-    # Accept a few common env names to make cloud deployments less fragile.
-    candidates = [
-        os.environ.get("ANTHROPIC_API_KEY", ""),
-        os.environ.get("CLAUDE_API_KEY", ""),
-        os.environ.get("ANTHROPIC_KEY", ""),
-    ]
-    for raw in candidates:
+    for name in ANTHROPIC_ENV_NAMES:
+        raw = os.environ.get(name, "")
         key = raw.strip().strip('"').strip("'")
         if key:
             return key
