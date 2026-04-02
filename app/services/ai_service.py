@@ -1,8 +1,12 @@
 import json
+import logging
 import os
+import re
 import anthropic
 
 from app.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_ARTICLE = """Te egy profi magyar SEO szovegiro vagy.
 Irj kb. 1200 szavas magyar cikket, strukturalt HTML tartalommal.
@@ -35,6 +39,131 @@ def _extract_text_from_response(resp) -> str:
         if text:
             parts.append(text)
     return "".join(parts).strip()
+
+
+def _log_raw_llm_response(raw: str, context: str) -> None:
+    """Log full raw text before JSON parse; truncate only if huge."""
+    if raw is None:
+        logger.info("%s: raw response is None", context)
+        return
+    n = len(raw)
+    if n > 32000:
+        logger.info(
+            "%s: raw response length=%d (truncated below to 32000 chars)",
+            context,
+            n,
+        )
+        logger.info("%s: raw response start:\n%s", context, raw[:16000])
+        logger.info("%s: raw response end:\n%s", context, raw[-16000:])
+    else:
+        logger.info("%s: raw response (%d chars):\n%s", context, n, raw)
+
+
+def _balanced_segment(text: str, open_ch: str, close_ch: str) -> str | None:
+    """First top-level balanced segment from open_ch to matching close_ch."""
+    start = text.find(open_ch)
+    if start == -1:
+        return None
+    depth = 0
+    for i in range(start, len(text)):
+        c = text[i]
+        if c == open_ch:
+            depth += 1
+        elif c == close_ch:
+            depth -= 1
+            if depth == 0:
+                return text[start : i + 1]
+    return None
+
+
+def _try_regex_json_object(text: str) -> str | None:
+    """Fallback: greedy match for { ... } (last resort after balanced extract)."""
+    m = re.search(r"\{[\s\S]*\}", text)
+    return m.group(0) if m else None
+
+
+def parse_llm_json_object(raw: str, *, context: str) -> dict:
+    """
+    Parse JSON object from model output: log raw, handle empty, try direct parse,
+    then balanced { } extraction, then regex fallback.
+    """
+    _log_raw_llm_response(raw, context)
+    stripped = (raw or "").strip()
+    if not stripped:
+        raise ValueError(
+            f"{context}: Anthropic returned an empty response; expected a JSON object."
+        )
+
+    errors: list[str] = []
+
+    try:
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict):
+            return parsed
+        errors.append(f"top-level JSON is {type(parsed).__name__}, expected object")
+    except json.JSONDecodeError as e:
+        errors.append(f"direct parse: {e}")
+
+    for label, candidate in (
+        ("balanced_braces", _balanced_segment(stripped, "{", "}")),
+        ("regex_braces", _try_regex_json_object(stripped)),
+    ):
+        if not candidate:
+            continue
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                logger.warning(
+                    "%s: recovered JSON via %s (%d chars)",
+                    context,
+                    label,
+                    len(candidate),
+                )
+                return parsed
+            errors.append(f"{label}: parsed to {type(parsed).__name__}, expected object")
+        except json.JSONDecodeError as e:
+            errors.append(f"{label}: {e}")
+
+    preview = stripped[:800] + ("…" if len(stripped) > 800 else "")
+    raise ValueError(
+        f"{context}: could not parse model output as JSON object. "
+        f"Attempts: {'; '.join(errors)}. Preview: {preview!r}"
+    )
+
+
+def parse_llm_json_value(raw: str, *, context: str):
+    """Parse JSON value (object or array) with same recovery strategy."""
+    _log_raw_llm_response(raw, context)
+    stripped = (raw or "").strip()
+    if not stripped:
+        raise ValueError(
+            f"{context}: Anthropic returned an empty response; expected JSON."
+        )
+
+    errors: list[str] = []
+
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError as e:
+        errors.append(f"direct parse: {e}")
+
+    for candidate in (
+        _balanced_segment(stripped, "{", "}"),
+        _balanced_segment(stripped, "[", "]"),
+        _try_regex_json_object(stripped),
+    ):
+        if not candidate:
+            continue
+        try:
+            return json.loads(candidate)
+        except json.JSONDecodeError as e:
+            errors.append(f"segment parse: {e}")
+
+    preview = stripped[:800] + ("…" if len(stripped) > 800 else "")
+    raise ValueError(
+        f"{context}: could not parse model output as JSON. "
+        f"Attempts: {'; '.join(errors)}. Preview: {preview!r}"
+    )
 
 
 def anthropic_key_debug_info() -> dict:
@@ -71,7 +200,7 @@ async def generate_article(topic: str, target_site: str | None = None) -> dict:
         messages=[{"role": "user", "content": user_prompt}],
     )
     raw = _extract_text_from_response(resp)
-    return json.loads(raw)
+    return parse_llm_json_object(raw, context="generate_article")
 
 
 async def generate_keywords(seed_keyword: str, industry: str | None = None) -> list[dict]:
@@ -90,7 +219,12 @@ async def generate_keywords(seed_keyword: str, industry: str | None = None) -> l
         messages=[{"role": "user", "content": user_prompt}],
     )
     raw = _extract_text_from_response(resp)
-    parsed = json.loads(raw)
+    parsed = parse_llm_json_value(raw, context="generate_keywords")
     if isinstance(parsed, dict) and "keywords" in parsed:
         return parsed["keywords"]
-    return parsed
+    if isinstance(parsed, list):
+        return parsed
+    raise ValueError(
+        "generate_keywords: expected JSON array or object with 'keywords' key, "
+        f"got {type(parsed).__name__}"
+    )
