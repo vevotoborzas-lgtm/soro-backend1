@@ -1,6 +1,9 @@
 import json
+import logging
 import os
 import anthropic
+
+logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_ARTICLE = """Te egy profi magyar SEO szovegiro vagy.
 Irj kb. 1200 szavas magyar cikket, strukturalt HTML tartalommal.
@@ -35,30 +38,26 @@ def _extract_text_from_response(resp) -> str:
     return "".join(parts).strip()
 
 
-ANTHROPIC_ENV_NAMES = ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "ANTHROPIC_KEY")
-
-
 def anthropic_key_debug_info() -> dict:
-    """For GET /debug/env — no secret values."""
-    for name in ANTHROPIC_ENV_NAMES:
-        raw = os.environ.get(name, "")
-        key = raw.strip().strip('"').strip("'")
-        if key:
-            return {"anthropic_api_key_present": True, "env_name_found": name}
+    """For GET /debug/env — no secret values. Only ANTHROPIC_API_KEY."""
+    raw = os.environ.get("ANTHROPIC_API_KEY", "")
+    key = raw.strip().strip('"').strip("'")
+    if key:
+        return {"anthropic_api_key_present": True, "env_name_found": "ANTHROPIC_API_KEY"}
     return {"anthropic_api_key_present": False, "env_name_found": None}
 
 
-def _get_anthropic_api_key() -> str:
-    for name in ANTHROPIC_ENV_NAMES:
-        raw = os.environ.get(name, "")
-        key = raw.strip().strip('"').strip("'")
-        if key:
-            return key
-    raise RuntimeError("ANTHROPIC_API_KEY is not set")
-
-
 async def generate_article(topic: str, target_site: str | None = None) -> dict:
-    client = anthropic.AsyncAnthropic(api_key=_get_anthropic_api_key())
+    # Temporary: Railway log visibility — first 10 chars only, never full key
+    _peek = os.environ.get("ANTHROPIC_API_KEY", "NOT FOUND")[:10]
+    print(f"generate_article: ANTHROPIC_API_KEY peek (first 10): {_peek}", flush=True)
+    logger.info("generate_article: ANTHROPIC_API_KEY peek (first 10): %s", _peek)
+
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
     user_prompt = f"Tema: {topic}\nCeloldal: {target_site or 'n/a'}"
     resp = await client.messages.create(
         model="claude-3-5-sonnet-latest",
@@ -72,7 +71,11 @@ async def generate_article(topic: str, target_site: str | None = None) -> dict:
 
 
 async def generate_keywords(seed_keyword: str, industry: str | None = None) -> list[dict]:
-    client = anthropic.AsyncAnthropic(api_key=_get_anthropic_api_key())
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip().strip('"').strip("'")
+    if not api_key:
+        raise RuntimeError("ANTHROPIC_API_KEY is not set")
+
+    client = anthropic.AsyncAnthropic(api_key=api_key)
     user_prompt = f"Magkulcsszo: {seed_keyword}\nIparag: {industry or 'altalanos'}"
     resp = await client.messages.create(
         model="claude-3-5-haiku-latest",
