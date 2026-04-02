@@ -2,6 +2,8 @@ import json
 import os
 import anthropic
 
+from app.core.config import get_settings
+
 SYSTEM_PROMPT_ARTICLE = """Te egy profi magyar SEO szovegiro vagy.
 Irj kb. 1200 szavas magyar cikket, strukturalt HTML tartalommal.
 KIMENETKENT CSAK ervenyes JSON-t adj vissza, semmi mast.
@@ -36,12 +38,12 @@ def _extract_text_from_response(resp) -> str:
 
 
 def anthropic_key_debug_info() -> dict:
-    """For GET /debug/env — no secret values. Only ANTHROPIC_API_KEY."""
-    raw = os.environ.get("ANTHROPIC_API_KEY", "")
-    key = raw.strip().strip('"').strip("'")
-    if key:
-        return {"anthropic_api_key_present": True, "env_name_found": "ANTHROPIC_API_KEY"}
-    return {"anthropic_api_key_present": False, "env_name_found": None}
+    """For GET /debug/env — names only, no values. Diagnose Railway injection."""
+    env_var_names = sorted(os.environ.keys())
+    return {
+        "env_var_names": env_var_names,
+        "anthropic_api_key_in_environ": "ANTHROPIC_API_KEY" in os.environ,
+    }
 
 
 async def generate_article(topic: str, target_site: str | None = None) -> dict:
@@ -59,9 +61,10 @@ async def generate_article(topic: str, target_site: str | None = None) -> dict:
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
 
     client = anthropic.AsyncAnthropic(api_key=api_key)
+    settings = get_settings()
     user_prompt = f"Tema: {topic}\nCeloldal: {target_site or 'n/a'}"
     resp = await client.messages.create(
-        model="claude-3-5-sonnet-latest",
+        model=settings.anthropic_model,
         max_tokens=4096,
         temperature=0.4,
         system=SYSTEM_PROMPT_ARTICLE,
@@ -77,9 +80,10 @@ async def generate_keywords(seed_keyword: str, industry: str | None = None) -> l
         raise RuntimeError("ANTHROPIC_API_KEY is not set")
 
     client = anthropic.AsyncAnthropic(api_key=api_key)
+    settings = get_settings()
     user_prompt = f"Magkulcsszo: {seed_keyword}\nIparag: {industry or 'altalanos'}"
     resp = await client.messages.create(
-        model="claude-3-5-haiku-latest",
+        model=settings.anthropic_model,
         max_tokens=2048,
         temperature=0.3,
         system=SYSTEM_PROMPT_KEYWORDS,

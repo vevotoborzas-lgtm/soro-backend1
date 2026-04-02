@@ -1,3 +1,4 @@
+import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -46,8 +47,14 @@ async def health():
 
 @app.get("/debug/env")
 async def debug_env():
-    """Temporary: verify Anthropic env without exposing secrets. Remove after fixing deploy."""
+    """Temporary: env var names + whether ANTHROPIC_API_KEY key exists in os.environ. Remove after fixing deploy."""
     return anthropic_key_debug_info()
+
+
+@app.get("/debug/all-env")
+async def debug_all_env():
+    """Temporary: all env var names only (no values). Remove after fixing deploy."""
+    return sorted(os.environ.keys())
 
 
 @app.get("/v1/ping")
