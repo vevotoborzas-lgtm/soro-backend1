@@ -1,9 +1,6 @@
 import json
-import logging
 import os
 import anthropic
-
-logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT_ARTICLE = """Te egy profi magyar SEO szovegiro vagy.
 Irj kb. 1200 szavas magyar cikket, strukturalt HTML tartalommal.
@@ -48,10 +45,14 @@ def anthropic_key_debug_info() -> dict:
 
 
 async def generate_article(topic: str, target_site: str | None = None) -> dict:
-    # Temporary: Railway log visibility — first 10 chars only, never full key
-    _peek = os.environ.get("ANTHROPIC_API_KEY", "NOT FOUND")[:10]
-    print(f"generate_article: ANTHROPIC_API_KEY peek (first 10): {_peek}", flush=True)
-    logger.info("generate_article: ANTHROPIC_API_KEY peek (first 10): %s", _peek)
+    import os
+
+    all_env_keys = [k for k in os.environ.keys()]
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "NOT_FOUND")
+    print(f"DEBUG ENV KEYS: {all_env_keys}")
+    print(
+        f"DEBUG ANTHROPIC KEY: {api_key[:10] if api_key != 'NOT_FOUND' else 'NOT_FOUND'}"
+    )
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip().strip('"').strip("'")
     if not api_key:
