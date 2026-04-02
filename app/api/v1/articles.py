@@ -1,7 +1,7 @@
 import json
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.v1.auth import get_current_user
@@ -42,7 +42,50 @@ class ArticleOut(BaseModel):
     target_site: str | None = None
 
 
-@router.post("/generate")
+class ArticleFullOut(BaseModel):
+    """Complete article row as returned after create or single-article fetch."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    user_id: str
+    title: str
+    content: str
+    excerpt: str
+    meta_title: str
+    meta_description: str
+    focus_keyword: str
+    tags: list[str]
+    seo_score: int
+    word_count: int
+    status: str
+    scheduled_at: datetime | None = None
+    published_at: datetime | None = None
+    wp_post_id: str | None = None
+    wp_post_url: str | None = None
+    target_site: str | None = None
+    created_at: datetime
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def parse_tags(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            s = v.strip()
+            if not s:
+                return []
+            try:
+                parsed = json.loads(s)
+                return parsed if isinstance(parsed, list) else []
+            except json.JSONDecodeError:
+                return []
+        return []
+
+
+@router.post("/generate", response_model=ArticleFullOut)
 async def generate(payload: GenerateArticleIn, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     if user.articles_used_this_month >= settings.monthly_article_quota:
         raise HTTPException(status_code=403, detail="Monthly quota reached")
@@ -71,7 +114,7 @@ async def generate(payload: GenerateArticleIn, user: User = Depends(get_current_
     user.articles_used_this_month += 1
     await db.commit()
     await db.refresh(article)
-    return {"id": article.id, "status": article.status}
+    return ArticleFullOut.model_validate(article)
 
 
 @router.get("/", response_model=list[ArticleOut])
@@ -101,7 +144,7 @@ async def scheduled(user: User = Depends(get_current_user), db: AsyncSession = D
     return list(res.scalars().all())
 
 
-@router.get("/{article_id}", response_model=ArticleOut)
+@router.get("/{article_id}", response_model=ArticleFullOut)
 async def get_article(article_id: str, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     res = await db.execute(select(Article).where(Article.id == article_id, Article.user_id == user.id))
     article = res.scalar_one_or_none()
