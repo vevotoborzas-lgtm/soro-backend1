@@ -166,24 +166,8 @@ def parse_llm_json_value(raw: str, *, context: str):
     )
 
 
-def anthropic_key_debug_info() -> dict:
-    """For GET /debug/env — names only, no values. Diagnose Railway injection."""
-    env_var_names = sorted(os.environ.keys())
-    return {
-        "env_var_names": env_var_names,
-        "anthropic_api_key_in_environ": "ANTHROPIC_API_KEY" in os.environ,
-    }
-
-
 async def generate_article(topic: str, target_site: str | None = None) -> dict:
     import os
-
-    all_env_keys = [k for k in os.environ.keys()]
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "NOT_FOUND")
-    print(f"DEBUG ENV KEYS: {all_env_keys}")
-    print(
-        f"DEBUG ANTHROPIC KEY: {api_key[:10] if api_key != 'NOT_FOUND' else 'NOT_FOUND'}"
-    )
 
     api_key = os.environ.get("ANTHROPIC_API_KEY", "").strip().strip('"').strip("'")
     if not api_key:

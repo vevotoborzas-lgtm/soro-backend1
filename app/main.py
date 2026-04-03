@@ -1,11 +1,9 @@
-import os
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1 import account, articles, auth, keywords, webhooks
 from app.core.config import get_settings
 from app.core.database import Base, engine
-from app.services.ai_service import anthropic_key_debug_info
 
 
 settings = get_settings()
@@ -43,18 +41,6 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-@app.get("/debug/env")
-async def debug_env():
-    """Temporary: env var names + whether ANTHROPIC_API_KEY key exists in os.environ. Remove after fixing deploy."""
-    return anthropic_key_debug_info()
-
-
-@app.get("/debug/all-env")
-async def debug_all_env():
-    """Temporary: all env var names only (no values). Remove after fixing deploy."""
-    return sorted(os.environ.keys())
 
 
 @app.get("/v1/ping")
